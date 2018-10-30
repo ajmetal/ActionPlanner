@@ -2,6 +2,8 @@ import json
 from collections import namedtuple, defaultdict, OrderedDict
 from timeit import default_timer as time
 
+#test comment from Samuel
+
 Recipe = namedtuple('Recipe', ['name', 'check', 'effect', 'cost'])
 
 
