@@ -41,6 +41,7 @@ def make_checker(rule):
     def check(state):
         # This code is called by graph(state) and runs millions of times.
         # Tip: Do something with rule['Consumes'] and rule['Requires'].
+        if state[""]
         return True
 
     return check
@@ -75,6 +76,7 @@ def graph(state):
     # Iterates through all recipes/rules, checking which are valid in the given state.
     # If a rule is valid, it returns the rule's name, the resulting state after application
     # to the given state, and the cost for the rule.
+    #global all_recipes
     for r in all_recipes:
         if r.check(state):
             yield (r.name, r.effect(state), r.cost)
@@ -124,18 +126,23 @@ if __name__ == '__main__':
         recipe = Recipe(name, checker, effector, rule['Time'])
         all_recipes.append(recipe)
 
-    # Create a function which checks for the goal
-    is_goal = make_goal_checker(Crafting['Goal'])
-
     # Initialize first state from initial inventory
-    state = State({key: 0 for key in Crafting['Items']})
-    state.update(Crafting['Initial'])
+    
+    print(Crafting['Initial'])
+    for i in range(len(Crafting['Initial'])):
+        state = State({key: 0 for key in Crafting['Items']})
+         # Create a function which checks for the goal
+        is_goal = make_goal_checker(Crafting['Goal'][i])
+        #print(i)
+        print(Crafting['Initial'][i])
+        print(Crafting['Goal'][i])
+        state.update(Crafting['Initial'][i])
 
-    # Search for a solution
-    resulting_plan = search(graph, state, is_goal, 5, heuristic)
+        # Search for a solution
+        resulting_plan = search(graph, state, is_goal, 1, heuristic)
 
-    if resulting_plan:
-        # Print resulting plan
-        for state, action in resulting_plan:
-            print('\t',state)
-            print(action)
+        if resulting_plan:
+            # Print resulting plan
+            for state, action in resulting_plan:
+                print('\t',state)
+                print(action)
