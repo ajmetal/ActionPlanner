@@ -1,9 +1,12 @@
 import json
 from collections import namedtuple, defaultdict, OrderedDict
 from timeit import default_timer as time
+from heapq import heappop, heappush
+from math import inf
 
 Recipe = namedtuple('Recipe', ['name', 'check', 'effect', 'cost'])
 
+def clamp(n, smallest=-inf, largest=inf): return max(smallest, min(n, largest))
 
 class State(OrderedDict):
     """ This class is a thin wrapper around an OrderedDict, which is simply a dictionary which keeps the order in
@@ -38,10 +41,27 @@ def make_checker(rule):
     # rule's requirements. This code runs once, when the rules are constructed before
     # the search is attempted.
 
+    requirements = {}
+    #{"Requires": rule["Requires"], "Consumes": rule["Consumes"]
+    if "Requires" in rule.keys():
+        requirements["Requires"] = rule["Requires"]
+    if "Consumes" in rule.keys():
+        requirements["Consumes"] = rule["Consumes"]
+
+    #TODO if we're running out of time, try writing multiple check functions 
+    # that only look at relevant fields ie: dont look at Requires if there are none
+
     def check(state):
         # This code is called by graph(state) and runs millions of times.
         # Tip: Do something with rule['Consumes'] and rule['Requires'].
-        if state[""]
+        if "Requires" in requirements.keys():
+            for key, value in requirements["Requires"].items():
+                if state[key] == 0:
+                    return False
+        if "Consumes" in requirements.keys():
+            for key, value in requirements["Consumes"].items():
+                if not state[key] == value:
+                    return False
         return True
 
     return check
@@ -52,10 +72,23 @@ def make_effector(rule):
     # new_state given the rule. This code runs once, when the rules are constructed
     # before the search is attempted.
 
+    change = {}
+    if "Produces" in rule.keys():
+        change["Produces"] = rule["Produces"]
+    if "Consumes" in rule.keys():
+        change["Consumes"] = rule["Consumes"]
+
     def effect(state):
         # This code is called by graph(state) and runs millions of times
         # Tip: Do something with rule['Produces'] and rule['Consumes'].
-        next_state = None
+        next_state = state.copy()
+        if "Consumes" in rule.keys():
+            for key, value in change["Consumes"].items():
+                next_state[key] -= value
+
+        for key, value in change["Produces"].items():
+            next_state[key] += value
+
         return next_state
 
     return effect
@@ -67,7 +100,15 @@ def make_goal_checker(goal):
 
     def is_goal(state):
         # This code is used in the search process and may be called millions of times.
-        return False
+        #print("checking goal: ", goal)
+        #print("against state: ", state)
+        for key, value in goal.items():
+            try:
+                if not state[key] == value:
+                    return False
+            except KeyError:
+                return False
+        return True
 
     return is_goal
 
@@ -87,15 +128,54 @@ def heuristic(state):
     return 0
 
 def search(graph, state, is_goal, limit, heuristic):
-
     start_time = time()
 
     # Implement your search here! Use your heuristic here!
     # When you find a path to the goal return a list of tuples [(state, action)]
     # representing the path. Each element (tuple) of the list represents a state
     # in the path and the action that took you to this state
-    while time() - start_time < limit:
-        pass
+
+    # The priority queue
+    queue = [(0, state, "No Action")]
+
+    # The dictionary that will be returned with the costs
+    distances = {}
+    distances[state] = 0
+
+    # The dictionary that will store the backpointers
+    backpointers = {}
+    backpointers[state] = None
+
+    while queue and time() - start_time < limit:
+       # print("in loop")
+        current_dist, current_state, current_action = heappop(queue)
+
+        # Check if current node is the destination
+        if is_goal(current_state):
+            #print("reached goal")
+            # List containing all cells from initial_position to destination
+            plan = [(current_state, current_action)]
+
+            # Go backwards from destination until the source using backpointers
+            # and add all the nodes in the shortest path into a list
+
+            current_back_node = backpointers[current_state]
+            while current_back_node is not None:
+                plan.append(current_back_node)
+                current_back_node = backpointers[current_back_node[0]]
+
+            return plan[::-1]
+
+        # Calculate cost from current note to all the adjacent ones
+        for name, next_state, cost in graph(current_state):
+            #print(name, cost)
+            plancost = current_dist + cost
+
+            # If the cost is new
+            if next_state not in distances or plancost < distances[next_state]:
+                distances[next_state] = plancost
+                backpointers[next_state] = (current_state, name)
+                heappush(queue, (plancost, next_state, name))
 
     # Failed to find a path
     print(time() - start_time, 'seconds.')
@@ -134,15 +214,17 @@ if __name__ == '__main__':
          # Create a function which checks for the goal
         is_goal = make_goal_checker(Crafting['Goal'][i])
         #print(i)
-        print(Crafting['Initial'][i])
-        print(Crafting['Goal'][i])
+        #print(Crafting['Initial'][i])
+        #print(Crafting['Goal'][i])
         state.update(Crafting['Initial'][i])
+        #print(state)
 
         # Search for a solution
-        resulting_plan = search(graph, state, is_goal, 1, heuristic)
+        resulting_plan = search(graph, state, is_goal, 30, heuristic)
 
         if resulting_plan:
             # Print resulting plan
+            #print("plan: ", resulting_plan)
             for state, action in resulting_plan:
                 print('\t',state)
                 print(action)
