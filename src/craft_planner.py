@@ -4,6 +4,8 @@ from timeit import default_timer as time
 from heapq import heappop, heappush
 from math import inf
 
+#test comment from Samuel
+
 Recipe = namedtuple('Recipe', ['name', 'check', 'effect', 'cost'])
 
 def clamp(n, smallest=-inf, largest=inf): return max(smallest, min(n, largest))
