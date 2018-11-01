@@ -105,8 +105,8 @@ def make_goal_checker(goal):
         #print("checking goal: ", goal)
         #print("against state: ", state)
         for key, value in goal.items():
-            try:
-                if not state[key] == value:
+            try: #not sure if we need this try except block
+                if not state[key] >= value:
                     return False
             except KeyError:
                 return False
@@ -125,11 +125,48 @@ def graph(state):
             yield (r.name, r.effect(state), r.cost)
 
 
-def heuristic(state):
+def heuristic(state, action, goal):
     # Implement your heuristic here!
+    
+    #tools = ['bench', 'wooden_pickaxe', 'wooden_axe', 'stone_axe', 'stone_pickaxe', 'iron_pickaxe', 'iron_axe', 'furnace']
+    #current_state = state.copy()
+
+    required = {}
+    consume = {}
+    
+    #gets the required tool needed for the goal
+    #gets the consumables needed for the goal
+    for name, rule in Crafting["Recipes"].items():
+        if rule['Produces'] == goal:
+            required = rule['Requires']
+            consume = rule['Consumes']
+
+    #checking if the action that is being observed produces anything directly related to the goal state.
+    for name, rule in Crafting["Recipes"].items():
+        if name == action:
+            for product in rule['Produces']:
+                #if you already have the required tool don't make another
+                if product in required.keys() and state[product] >= required[product]:
+                    return inf
+                #if you already have enough the material that would be produced through the action don't make more
+                if product in consume.keys() and state[product] >= consume[product]:
+                    return inf 
+                #if the thing produced is directly needed towards the end goal
+                if product in required.keys() or product in consume.keys():
+                    return 0
+               
+    
+              
+    """
+    #if you already have the required item needed to craft
+    for require in required:
+        if current_state[require] > 0:
+            return inf
+    """   
     return 0
 
-def search(graph, state, is_goal, limit, heuristic):
+
+def search(graph, state, is_goal, limit, heuristic, goal):
     start_time = time()
 
     # Implement your search here! Use your heuristic here!
@@ -138,6 +175,7 @@ def search(graph, state, is_goal, limit, heuristic):
     # in the path and the action that took you to this state
 
     # The priority queue
+    #cost, state, name of action
     queue = [(0, state, "No Action")]
 
     # The dictionary that will be returned with the costs
@@ -148,6 +186,9 @@ def search(graph, state, is_goal, limit, heuristic):
     backpointers = {}
     backpointers[state] = None
 
+    #how many required actions were taken
+    length = 0
+    current_state = state
     while queue and time() - start_time < limit:
        # print("in loop")
         current_dist, current_state, current_action = heappop(queue)
@@ -156,7 +197,7 @@ def search(graph, state, is_goal, limit, heuristic):
         if is_goal(current_state):
             #print("reached goal")
             # List containing all cells from initial_position to destination
-            plan = [(current_state, current_action)]
+            plan = [(current_state, current_action, current_dist, length)]
 
             # Go backwards from destination until the source using backpointers
             # and add all the nodes in the shortest path into a list
@@ -168,20 +209,23 @@ def search(graph, state, is_goal, limit, heuristic):
 
             return plan[::-1]
 
+        length += 1
+
         # Calculate cost from current note to all the adjacent ones
         for name, next_state, cost in graph(current_state):
             #print(name, cost)
-            plancost = current_dist + cost
+            plancost = current_dist + cost + heuristic(next_state, name, goal)
 
             # If the cost is new
             if next_state not in distances or plancost < distances[next_state]:
                 distances[next_state] = plancost
-                backpointers[next_state] = (current_state, name)
+                backpointers[next_state] = (current_state, name, plancost, length)
                 heappush(queue, (plancost, next_state, name))
 
     # Failed to find a path
     print(time() - start_time, 'seconds.')
     print("Failed to find a path from", state, 'within time limit.')
+    print('the state is: ', current_state)
     return None
 
 if __name__ == '__main__':
@@ -210,23 +254,29 @@ if __name__ == '__main__':
 
     # Initialize first state from initial inventory
     
-    print(Crafting['Initial'])
+    #print(Crafting['Initial'])
     for i in range(len(Crafting['Initial'])):
         state = State({key: 0 for key in Crafting['Items']})
          # Create a function which checks for the goal
         is_goal = make_goal_checker(Crafting['Goal'][i])
         #print(i)
         #print(Crafting['Initial'][i])
-        #print(Crafting['Goal'][i])
+        #print(Crafting['Goal'][i]) 
         state.update(Crafting['Initial'][i])
         #print(state)
 
         # Search for a solution
-        resulting_plan = search(graph, state, is_goal, 30, heuristic)
+        resulting_plan = search(graph, state, is_goal, 30, heuristic, Crafting['Goal'][i])
+        
 
         if resulting_plan:
             # Print resulting plan
             #print("plan: ", resulting_plan)
-            for state, action in resulting_plan:
-                print('\t',state)
-                print(action)
+            #counter = 0
+            for state, action, cost, length in resulting_plan:
+                print('\t', 'state: ', state)
+                print("action: ", action)
+                print('cost: ', cost)
+                print('len: ', length)
+                #print ("count: ", counter)
+                #counter += 1
