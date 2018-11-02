@@ -131,28 +131,22 @@ def heuristic(state, action, goal):
     #tools = ['bench', 'wooden_pickaxe', 'wooden_axe', 'stone_axe', 'stone_pickaxe', 'iron_pickaxe', 'iron_axe', 'furnace']
     #current_state = state.copy()
 
-    required = {}
-    consume = {}
-    
-    #gets the required tool needed for the goal
-    #gets the consumables needed for the goal
-    for name, rule in Crafting["Recipes"].items():
-        if rule['Produces'] == goal:
-            required = rule['Requires']
-            consume = rule['Consumes']
-
     #checking if the action that is being observed produces anything directly related to the goal state.
     for name, rule in Crafting["Recipes"].items():
         if name == action:
+            #print(name, action)
             for product in rule['Produces']:
                 #if you already have the required tool don't make another
-                if product in required.keys() and state[product] >= required[product]:
+                if product in require.keys() and require[product] == True and state[product] > 0:
+                    #print('return inf')
                     return inf
                 #if you already have enough the material that would be produced through the action don't make more
                 if product in consume.keys() and state[product] >= consume[product]:
-                    return inf 
+                    #print('return inf')
+                    return inf
                 #if the thing produced is directly needed towards the end goal
-                if product in required.keys() or product in consume.keys():
+                if product in require.keys() or product in consume.keys():
+                    #print('return zero')
                     return 0
                
     
@@ -163,6 +157,7 @@ def heuristic(state, action, goal):
         if current_state[require] > 0:
             return inf
     """   
+    #print('fall through')
     return 0
 
 
@@ -214,13 +209,14 @@ def search(graph, state, is_goal, limit, heuristic, goal):
         # Calculate cost from current note to all the adjacent ones
         for name, next_state, cost in graph(current_state):
             #print(name, cost)
-            plancost = current_dist + cost + heuristic(next_state, name, goal)
+            plancost = current_dist + cost 
 
             # If the cost is new
             if next_state not in distances or plancost < distances[next_state]:
                 distances[next_state] = plancost
                 backpointers[next_state] = (current_state, name, plancost, length)
-                heappush(queue, (plancost, next_state, name))
+                #diff = {}
+                heappush(queue, (plancost + heuristic(next_state, name, goal), next_state, name))
 
     # Failed to find a path
     print(time() - start_time, 'seconds.')
@@ -228,6 +224,23 @@ def search(graph, state, is_goal, limit, heuristic, goal):
     print('the state is: ', current_state)
     return None
 
+######################################################
+def get_requirements(target_item):
+    for key, value in Crafting['Recipes'].items():
+        if list(value['Produces'])[0] == target_item: 
+            value.get('Requires')
+
+######################################################
+def get_consumption(target_item, num):
+    for key, value in Crafting['Recipes'].items():
+        if list(value['Produces'])[0] == target_item: 
+            c = value.get('Consumes')
+            if c:
+                for k, v in c.items():
+                    c[k] *= num
+            return c
+
+############################################################
 if __name__ == '__main__':
     with open('Crafting.json') as f:
         Crafting = json.load(f)
@@ -264,7 +277,20 @@ if __name__ == '__main__':
         #print(Crafting['Goal'][i]) 
         state.update(Crafting['Initial'][i])
         #print(state)
+        require = {k : get_requirements(k) for (k, v) in Crafting['Goal'][i].items()}
+        consume = {k : get_consumption(k, v) for (k, v) in Crafting['Goal'][i].items()}
+        print(require, consume)
+        #gets the require tool needed for the goal
+        #gets the consumables needed for the goal
+        for name, value in Crafting['Goal'][i].items():
+            #print(name, value)
+            for key, rule in Crafting["Recipes"].items():
+                #print(list(rule['Produces'])[0], name)
+                if list(rule['Produces'])[0] == name:
+                    require.update(rule.get('Requires') or [])
+                    consume.update(rule.get('Consumes') or [])
 
+        #print(required, consume)
         # Search for a solution
         resulting_plan = search(graph, state, is_goal, 30, heuristic, Crafting['Goal'][i])
         
