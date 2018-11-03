@@ -49,20 +49,19 @@ def make_checker(rule):
         requirements["Requires"] = rule["Requires"]
     if "Consumes" in rule.keys():
         requirements["Consumes"] = rule["Consumes"]
-
-    #TODO if we're running out of time, try writing multiple check functions 
-    # that only look at relevant fields ie: dont look at Requires if there are none
+    
 
     def check(state):
         # This code is called by graph(state) and runs millions of times.
         # Tip: Do something with rule['Consumes'] and rule['Requires'].
+        #print(requirements, state)
         if "Requires" in requirements.keys():
             for key, value in requirements["Requires"].items():
                 if state[key] == 0:
                     return False
         if "Consumes" in requirements.keys():
             for key, value in requirements["Consumes"].items():
-                if not state[key] == value:
+                if state[key] < value:
                     return False
         return True
 
@@ -90,6 +89,8 @@ def make_effector(rule):
 
         for key, value in change["Produces"].items():
             next_state[key] += value
+            #if key in goal_components:
+            #    goal_components[key] -= value
 
         return next_state
 
@@ -120,13 +121,24 @@ def graph(state):
     # If a rule is valid, it returns the rule's name, the resulting state after application
     # to the given state, and the cost for the rule.
     #global all_recipes
+    
+    valid_recipes = []
     for r in all_recipes:
+        #print('recipe', r)
         if r.check(state):
-            yield (r.name, r.effect(state), r.cost)
+            valid_recipes.append((r.name, r.effect(state), r.cost))
+    #print(valid_recipes[0][0])
+    return valid_recipes
 
 
 def heuristic(state):
-    # Implement your heuristic here!
+
+    for key, value in state.items():
+        if key not in goal_components:
+            return inf
+        elif value > goal_components[key]:
+            return inf
+    print("return 0 for state, ", state)
     return 0
 
 def search(graph, state, is_goal, limit, heuristic):
@@ -151,6 +163,7 @@ def search(graph, state, is_goal, limit, heuristic):
     while queue and time() - start_time < limit:
        # print("in loop")
         current_dist, current_state, current_action = heappop(queue)
+        #print(current_state)
 
         # Check if current node is the destination
         if is_goal(current_state):
@@ -170,19 +183,25 @@ def search(graph, state, is_goal, limit, heuristic):
 
         # Calculate cost from current note to all the adjacent ones
         for name, next_state, cost in graph(current_state):
-            #print(name, cost)
+            #print(name)
             plancost = current_dist + cost
 
             # If the cost is new
             if next_state not in distances or plancost < distances[next_state]:
+                #print(next_state, current_state)
                 distances[next_state] = plancost
                 backpointers[next_state] = (current_state, name)
-                heappush(queue, (plancost, next_state, name))
+                #diff = { k : next_state[k] - current_state[k] for k in next_state }
+                #print(diff)
+                #
+                heappush(queue, (plancost + heuristic(next_state), next_state, name))
 
     # Failed to find a path
     print(time() - start_time, 'seconds.')
     print("Failed to find a path from", state, 'within time limit.')
     return None
+#"coal":['iron_pickaxe', 'stone_pickaxe', 'wood_pickaxe'], "ore":['iron_pickaxe', 'stone_pickaxe'],
+#parts = { "bench": ['plank', 'wood'], "wooden_pickaxe": ['bench', 'plank', 'stick', 'wood'], "stone_pickaxe":['bench', 'cobble','stick','wood'], "iron_pickaxe":['bench', 'planks', 'wood', 'ingot', 'stick', 'furnace', 'coal','ore'], "wooden_axe":['bench', 'plank','wood','stick'],"stone_axe":['bench','cobble','stick','wood','stone_pickaxe','wood_pickaxe','iron_pickaxe']"iron_axe":,['bench', 'plank','wood','ingot','stick','furnace','coal','ore'] ]}
 
 if __name__ == '__main__':
     with open('Crafting.json') as f:
@@ -201,25 +220,63 @@ if __name__ == '__main__':
     # print('Example recipe:','craft stone_pickaxe at bench ->',Crafting['Recipes']['craft stone_pickaxe at bench'])
 
     # Build rules
+    item_cost_map = {}
     all_recipes = []
     for name, rule in Crafting['Recipes'].items():
         checker = make_checker(rule)
         effector = make_effector(rule)
         recipe = Recipe(name, checker, effector, rule['Time'])
         all_recipes.append(recipe)
+        key = list(rule['Produces'])[0]
+        item_cost_map[key] = rule.get('Consumes')
+        if item_cost_map[key] != None and rule.get('Requires') != None:
+            item_cost_map[key].update(rule.get('Requires'))
+        elif rule.get('Requires') != None:
+            item_cost_map[key] = rule.get('Requires')
+    print("Item cost map:", item_cost_map)
 
-    # Initialize first state from initial inventory
-    
-    print(Crafting['Initial'])
+    #print(Crafting['Initial'])
     for i in range(len(Crafting['Initial'])):
         state = State({key: 0 for key in Crafting['Items']})
-         # Create a function which checks for the goal
+
+        goal = Crafting['Goal'][i]
         is_goal = make_goal_checker(Crafting['Goal'][i])
-        #print(i)
-        #print(Crafting['Initial'][i])
-        #print(Crafting['Goal'][i])
         state.update(Crafting['Initial'][i])
         #print(state)
+
+        goal_components = {}
+    
+        #tools = ['bench', 'wooden_pickaxe', 'wooden_axe', 'stone_axe', 'stone_pickaxe', 'iron_pickaxe', 'iron_axe', 'furnace']
+
+        requirements = []
+
+        for item in goal:
+            requirements.append((item, goal[item]))
+
+        print(requirements)
+
+        while len(requirements) != 0:
+            item, num = requirements.pop()
+
+            if item + " for " in list(Crafting['Recipes'].keys()) or " in " + item in list(Crafting['Recipes'].keys()):
+                goal_components[item] = 1
+            else:
+                if goal_components.get(num) != None:
+                    goal_components[item] += num
+                else:
+                    goal_components[item] = num
+
+            for action in Crafting['Recipes']:
+
+                if item in Crafting['Recipes'][action]['Produces']:
+                    if 'Consumes' in Crafting['Recipes'][action]:
+                        for consumable in Crafting['Recipes'][action]['Consumes']:
+                            requirements.append((consumable, Crafting['Recipes'][action]['Consumes'][consumable]))
+                    if 'Requires' in Crafting['Recipes'][action]:
+                        for requireable in Crafting['Recipes'][action]['Requires']:
+                            if goal_components.get(requireable) == None or goal_components[requireable] == 0:
+                                requirements.append((requireable, 1))
+        print("GOAL COMPONENTS: ", goal_components)
 
         # Search for a solution
         resulting_plan = search(graph, state, is_goal, 30, heuristic)
