@@ -35,7 +35,7 @@ class State(OrderedDict):
         return new_state
 
     def __str__(self):
-        return str(dict(item for item in self.items() if item[1] > 0))
+        return 'State' + str(dict(item for item in self.items() if item[1] > 0))
 
 
 def make_checker(rule):
@@ -73,21 +73,22 @@ def make_effector(rule):
     # new_state given the rule. This code runs once, when the rules are constructed
     # before the search is attempted.
 
-    change = {}
+    delta = {}
     if "Produces" in rule.keys():
-        change["Produces"] = rule["Produces"]
+        delta["Produces"] = rule["Produces"]
     if "Consumes" in rule.keys():
-        change["Consumes"] = rule["Consumes"]
+        delta["Consumes"] = rule["Consumes"]
 
     def effect(state):
         # This code is called by graph(state) and runs millions of times
         # Tip: Do something with rule['Produces'] and rule['Consumes'].
         next_state = state.copy()
-        if "Consumes" in rule.keys():
-            for key, value in change["Consumes"].items():
+        #next_state = State({key: value for key, value in state.items()})
+        if rule.get('Consumes'):
+            for key, value in delta["Consumes"].items():
                 next_state[key] -= value
 
-        for key, value in change["Produces"].items():
+        for key, value in delta["Produces"].items():
             next_state[key] += value
             #if key in goal_components:
             #    goal_components[key] -= value
@@ -122,25 +123,25 @@ def graph(state):
     # to the given state, and the cost for the rule.
     #global all_recipes
     
-    valid_recipes = []
     for r in all_recipes:
-        #print('recipe', r)
         if r.check(state):
-            valid_recipes.append((r.name, r.effect(state), r.cost))
-    #print(valid_recipes[0][0])
-    return valid_recipes
+            yield (r.name, r.effect(state), r.cost)
 
-
-def heuristic(state):
-
-    for key, value in state.items():
-        if key not in goal_components:
-            return inf
-        elif value > goal_components[key]:
-            return inf
-    print("return 0 for state, ", state)
+def heuristic(state, diff, action):
+    #print(state, action)
+    for key, value in diff.items():
+        if value > 0:
+            if key in list(goal_components.keys()):
+                if isinstance(goal_components[key], bool) and state[key] > 1:
+                    #print("returning inf", key, state[key], state)
+                    return inf
+            else:
+                return inf
+                #all_actions.remove(action)
+                #print(key, "not in goal")
+                
+    #print("return 0 for state, ", state)
     return 0
-
 
 def search(graph, state, is_goal, limit, heuristic, goal):
     start_time = time()
@@ -152,7 +153,7 @@ def search(graph, state, is_goal, limit, heuristic, goal):
 
     # The priority queue
     #cost, state, name of action
-    queue = [(0, state, "No Action")]
+    queue = [(0, state, "No Action", )]
 
     # The dictionary that will be returned with the costs
     distances = {}
@@ -162,14 +163,17 @@ def search(graph, state, is_goal, limit, heuristic, goal):
     backpointers = {}
     backpointers[state] = None
 
+    visited = set(state)
+
     #how many required actions were taken
     length = 0
     current_state = state
     while queue and time() - start_time < limit:
        # print("in loop")
         current_dist, current_state, current_action = heappop(queue)
-        #print(current_state)
-
+        #print(current_state, current_dist)
+        #print(queue)
+        #print([i[0] for i in queue])
         # Check if current node is the destination
         if is_goal(current_state):
             #print("reached goal")
@@ -189,19 +193,24 @@ def search(graph, state, is_goal, limit, heuristic, goal):
         length += 1
 
         # Calculate cost from current note to all the adjacent ones
-        for name, next_state, cost in graph(current_state):
+        for action, next_state, cost in graph(current_state):
             #print(name)
             plancost = current_dist + cost
-
             # If the cost is new
-            if next_state not in distances or plancost < distances[next_state]:
+            #if next_state not in distances or plancost < distances[next_state] and next_state not in visited:
+            diff = { k : next_state[k] - current_state[k] for k in next_state }
+            h = heuristic(next_state, diff, action)
+            if next_state not in distances or plancost + h < distances[next_state] and next_state:
                 #print(next_state, current_state)
                 distances[next_state] = plancost
-                backpointers[next_state] = (current_state, name)
-                #diff = { k : next_state[k] - current_state[k] for k in next_state }
+                #visited.add(next_state)
+                backpointers[next_state] = (current_state, action, plancost, length)
+                #
                 #print(diff)
                 #
-                heappush(queue, (plancost + heuristic(next_state), next_state, name))
+                
+                if h != inf:
+                    heappush(queue, (plancost + h, next_state, action))
 
     # Failed to find a path
     print(time() - start_time, 'seconds.')
@@ -227,12 +236,16 @@ if __name__ == '__main__':
     # # Dict of crafting recipes (each is a dict):
     # print('Example recipe:','craft stone_pickaxe at bench ->',Crafting['Recipes']['craft stone_pickaxe at bench'])
 
+    #print(Crafting['Initial'], Crafting['Goal'], len(Crafting['Initial']), len(Crafting['Goal']))
+
     # Build rules
     item_cost_map = {}
     all_recipes = []
+    master_actions = []
     for name, rule in Crafting['Recipes'].items():
         checker = make_checker(rule)
         effector = make_effector(rule)
+        master_actions.append(name)
         recipe = Recipe(name, checker, effector, rule['Time'])
         all_recipes.append(recipe)
         key = list(rule['Produces'])[0]
@@ -241,63 +254,61 @@ if __name__ == '__main__':
             item_cost_map[key].update(rule.get('Requires'))
         elif rule.get('Requires') != None:
             item_cost_map[key] = rule.get('Requires')
-    print("Item cost map:", item_cost_map)
-
+    #print("Item cost map:", item_cost_map)
+    #print("All recipes: ", all_recipes)
     #print(Crafting['Initial'])
     for i in range(len(Crafting['Initial'])):
-        state = State({key: 0 for key in Crafting['Items']})
-
+        starting_state = State({key: 0 for key in Crafting['Items']})
+        all_actions = master_actions.copy()
         goal = Crafting['Goal'][i]
         is_goal = make_goal_checker(Crafting['Goal'][i])
-        state.update(Crafting['Initial'][i])
+        starting_state.update(Crafting['Initial'][i])
         #print(state)
 
         goal_components = {}
-    
-        #tools = ['bench', 'wooden_pickaxe', 'wooden_axe', 'stone_axe', 'stone_pickaxe', 'iron_pickaxe', 'iron_axe', 'furnace']
 
-        requirements = []
+        item_list = []
 
         for item in goal:
-            requirements.append((item, goal[item]))
+            item_list.append((item, goal[item]))
 
-        print(requirements)
+        #print(item_list)
 
-        while len(requirements) != 0:
-            item, num = requirements.pop()
+        while len(item_list) != 0:
+            item, num = item_list.pop()
 
             if item + " for " in list(Crafting['Recipes'].keys()) or " in " + item in list(Crafting['Recipes'].keys()):
                 goal_components[item] = 1
             else:
-                if goal_components.get(num) != None:
+                if goal_components.get(num):
                     goal_components[item] += num
                 else:
                     goal_components[item] = num
 
             for action in Crafting['Recipes']:
 
-                if item in Crafting['Recipes'][action]['Produces']:
-                    if 'Consumes' in Crafting['Recipes'][action]:
-                        for consumable in Crafting['Recipes'][action]['Consumes']:
-                            requirements.append((consumable, Crafting['Recipes'][action]['Consumes'][consumable]))
-                    if 'Requires' in Crafting['Recipes'][action]:
-                        for requireable in Crafting['Recipes'][action]['Requires']:
-                            if goal_components.get(requireable) == None or goal_components[requireable] == 0:
-                                requirements.append((requireable, 1))
-        print("GOAL COMPONENTS: ", goal_components)
+                if Crafting['Recipes'][action]['Produces'].get(item):
+                    if Crafting['Recipes'][action].get('Consumes'):
+                        for k, v in Crafting['Recipes'][action]['Consumes'].items():
+                            item_list.append((k, v))
+
+                    if Crafting['Recipes'][action].get('Requires'):
+                        for k, v in Crafting['Recipes'][action]['Requires'].items():
+                            if goal_components.get(k) == None or goal_components[k] == 0:
+                                item_list.append((k, v))
+
+        print("\nGOAL COMPONENTS: ", goal_components, '\n')
 
         # Search for a solution
-        resulting_plan = search(graph, state, is_goal, 30, heuristic, Crafting['Goal'][i])
-        
-
+        print('\ngoal, start ', goal, starting_state)
+        resulting_plan = search(graph, starting_state, is_goal, 30, heuristic, Crafting['Goal'][i])
         if resulting_plan:
-            # Print resulting plan
-            #print("plan: ", resulting_plan)
-            #counter = 0
-            for state, action, cost, length in resulting_plan:
-                print('\t', 'state: ', state)
-                print("action: ", action)
-                print('cost: ', cost)
-                print('len: ', length)
-                #print ("count: ", counter)
-                #counter += 1
+            state = resulting_plan[0][0]
+            action = resulting_plan[0][1]
+            cost = resulting_plan[0][2]
+            length = resulting_plan[0][3]
+            
+            print('end state: ', state)
+            print("action: ", action)
+            print('cost: ', cost)
+            print('len: ', length)
