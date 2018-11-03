@@ -1,0 +1,2 @@
+We were unable to finish the assignment despite many hours of work. We only pass 6/10 testcases, so
+we never got to create a unique solution that we could solve.
