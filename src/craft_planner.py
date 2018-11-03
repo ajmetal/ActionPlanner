@@ -106,8 +106,8 @@ def make_goal_checker(goal):
         #print("checking goal: ", goal)
         #print("against state: ", state)
         for key, value in goal.items():
-            try:
-                if not state[key] == value:
+            try: #not sure if we need this try except block
+                if not state[key] >= value:
                     return False
             except KeyError:
                 return False
@@ -141,7 +141,8 @@ def heuristic(state):
     print("return 0 for state, ", state)
     return 0
 
-def search(graph, state, is_goal, limit, heuristic):
+
+def search(graph, state, is_goal, limit, heuristic, goal):
     start_time = time()
 
     # Implement your search here! Use your heuristic here!
@@ -150,6 +151,7 @@ def search(graph, state, is_goal, limit, heuristic):
     # in the path and the action that took you to this state
 
     # The priority queue
+    #cost, state, name of action
     queue = [(0, state, "No Action")]
 
     # The dictionary that will be returned with the costs
@@ -160,6 +162,9 @@ def search(graph, state, is_goal, limit, heuristic):
     backpointers = {}
     backpointers[state] = None
 
+    #how many required actions were taken
+    length = 0
+    current_state = state
     while queue and time() - start_time < limit:
        # print("in loop")
         current_dist, current_state, current_action = heappop(queue)
@@ -169,7 +174,7 @@ def search(graph, state, is_goal, limit, heuristic):
         if is_goal(current_state):
             #print("reached goal")
             # List containing all cells from initial_position to destination
-            plan = [(current_state, current_action)]
+            plan = [(current_state, current_action, current_dist, length)]
 
             # Go backwards from destination until the source using backpointers
             # and add all the nodes in the shortest path into a list
@@ -180,6 +185,8 @@ def search(graph, state, is_goal, limit, heuristic):
                 current_back_node = backpointers[current_back_node[0]]
 
             return plan[::-1]
+
+        length += 1
 
         # Calculate cost from current note to all the adjacent ones
         for name, next_state, cost in graph(current_state):
@@ -199,6 +206,7 @@ def search(graph, state, is_goal, limit, heuristic):
     # Failed to find a path
     print(time() - start_time, 'seconds.')
     print("Failed to find a path from", state, 'within time limit.')
+    print('the state is: ', current_state)
     return None
 #"coal":['iron_pickaxe', 'stone_pickaxe', 'wood_pickaxe'], "ore":['iron_pickaxe', 'stone_pickaxe'],
 #parts = { "bench": ['plank', 'wood'], "wooden_pickaxe": ['bench', 'plank', 'stick', 'wood'], "stone_pickaxe":['bench', 'cobble','stick','wood'], "iron_pickaxe":['bench', 'planks', 'wood', 'ingot', 'stick', 'furnace', 'coal','ore'], "wooden_axe":['bench', 'plank','wood','stick'],"stone_axe":['bench','cobble','stick','wood','stone_pickaxe','wood_pickaxe','iron_pickaxe']"iron_axe":,['bench', 'plank','wood','ingot','stick','furnace','coal','ore'] ]}
@@ -279,11 +287,17 @@ if __name__ == '__main__':
         print("GOAL COMPONENTS: ", goal_components)
 
         # Search for a solution
-        resulting_plan = search(graph, state, is_goal, 30, heuristic)
+        resulting_plan = search(graph, state, is_goal, 30, heuristic, Crafting['Goal'][i])
+        
 
         if resulting_plan:
             # Print resulting plan
             #print("plan: ", resulting_plan)
-            for state, action in resulting_plan:
-                print('\t',state)
-                print(action)
+            #counter = 0
+            for state, action, cost, length in resulting_plan:
+                print('\t', 'state: ', state)
+                print("action: ", action)
+                print('cost: ', cost)
+                print('len: ', length)
+                #print ("count: ", counter)
+                #counter += 1
